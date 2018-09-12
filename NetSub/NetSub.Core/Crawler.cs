@@ -3,6 +3,7 @@ using NetSub.Core.Model;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -16,16 +17,51 @@ namespace NetSub.Core
     {
         public static async void Crawl(int pages)
         {
-            var a = await GetPageAsync(1);
-            GetPageData(a);
+            for (int i = 1; i < pages; i++)
+            {
+                var a = await GetPageAsync(i);
+                var sata = a.GetPageData();
+                sata.Download();
+            }
+
+
         }
-        public static /*IEnumerable<SubflixModel>*/ void GetPageData(string html)
+        public static async void Download(this IEnumerable<SubflixModel> items)
+        {
+            foreach (var item in items)
+            {
+                var url = await item.GetdownloadLink();
+                HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(url);
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                {
+                    var fn = response.Headers["Content-Disposition"].Split(new string[] { "=" }, StringSplitOptions.None)[1];
+                    string regexSearch = new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
+                    Regex r = new Regex(string.Format("[{0}]", Regex.Escape(regexSearch)));
+                    fn = r.Replace(fn, "");
+                    Directory.CreateDirectory(@".\SubRepository");
+                    string basePath = @".\SubRepository"; // Change accordingly...
+                    var responseStream = response.GetResponseStream();
+                    if (!File.Exists(Path.Combine(basePath, fn)))
+                        using (var fileStream = File.Create(Path.Combine(basePath, fn)))
+                            responseStream.CopyTo(fileStream);
+
+                    else
+                        using (var fileStream = File.Create(Path.Combine(basePath, fn + $"_{(Int32)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds}")))
+                        {
+                            responseStream.CopyTo(fileStream);
+                        }
+
+                }
+            }
+
+        }
+        public static IEnumerable<SubflixModel> GetPageData(this string html)
         {
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
             var table = doc.DocumentNode.SelectSingleNode("//table");
             var cc = table.GetElementsWithClass("post-table", "tr");
-            var items = cc.ToDownloadItems().Filter();
+            return cc.ToDownloadItems().Filter();
         }
         private static IEnumerable<SubflixModel> ToDownloadItems(this IEnumerable<HtmlNode> items)
         {
@@ -61,11 +97,11 @@ namespace NetSub.Core
             var res = await client.SendAsync(req);
             return await res.Content.ReadAsStringAsync();
         }
-        public static async Task<string> GetdownloadLink(int postid)
+        public static async Task<string> GetdownloadLink(this SubflixModel post)
         {
             var dict = new Dictionary<string, string>();
             dict.Add("action", "downajax");
-            dict.Add("postid", postid.ToString());
+            dict.Add("postid", post.Id);
             var client = new HttpClient();
             var req = new HttpRequestMessage(HttpMethod.Post, Constants.APIHost + "wp-admin/admin-ajax.php") { Content = new FormUrlEncodedContent(dict) };
             var res = await client.SendAsync(req);

@@ -7,8 +7,8 @@ namespace ConsoleApp1
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
-            Crawler.Crawl(2);
+            Console.WriteLine("Crawling");
+            Crawler.Crawl(1457);
             Console.ReadLine();
         }
     }
